@@ -3,7 +3,7 @@ import os
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.sessions import SessionMiddlewareStack
 from django.core.asgi import get_asgi_application
-from core__c.middleware import JWTAuthMiddleware
+from core__c.middleware import TokenAuthMiddleware
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "processor.settings")
 # Initialize Django ASGI application early to ensure the AppRegistry
@@ -14,11 +14,10 @@ from core__c.routing import websocket_urlpatterns
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": JWTAuthMiddleware(
-        SessionMiddlewareStack(
+    "websocket": TokenAuthMiddleware(
             URLRouter(
                 websocket_urlpatterns
             )
         )
-    ),
+    
 })

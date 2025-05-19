@@ -1,9 +1,14 @@
 import json
+import uuid
 import jwt
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from channels.layers import get_channel_layer
+import aioredis
+from django.core.cache import cache
+from django_redis import get_redis_connection
 
 from django.conf import settings
 from django.db.models import Q
@@ -59,58 +64,40 @@ logger = logging.getLogger(__name__)
 #         await self.send(text_data=json.dumps(event['message']))
 
 
-
 class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
-        """
-        Handle new WebSocket connection.
-        Authenticates the user via JWT access token passed in query string,
-        and connects them to a chat room with the target user (roomName = other user's ID).
-        """
-        # Parse token and target user from query string
         query_string = self.scope['query_string'].decode('utf-8')
         query_params = parse_qs(query_string)
         token = query_params.get('token', [None])[0]
-        print(f"Token: {token}")
         target_user_id = query_params.get('roomName', [None])[0]
+        print("Connecting to chat consumer with token:", token)
+        print("Connecting to chat consumer with target_user_id:", target_user_id)
 
-        # Validate presence of required params
         if not token or not target_user_id:
-            await self.close(code=4001)  # Missing token or target
-            print("Here rejecting")
+            await self.close(code=4001)
             return
 
         try:
-            # Decode JWT access token
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             user_id = payload.get('user_id')
             if not user_id:
                 raise ValueError("user_id not found in token")
-
-            # Get the authenticated user (sender)
+        
             sender = await self.get_user_by_id(user_id)
-            if not sender:
-                raise ValueError("Sender user not found")
-
-            # Get the receiver (target user)
             receiver = await self.get_user_by_id(target_user_id)
-            if not receiver:
-                raise ValueError("Target user not found")
-
-            # Generate unique chatroom name based on both user IDs
+        
+            if not sender or not receiver:
+                raise ValueError("Invalid users")
+        
+            self.scope["user"] = sender
             self.chatroom = self.generate_chatroom(sender, receiver)
-
-            # Get or create the thread object
-            print("Here i",)
+            print("Chatroom name:", self.chatroom)
             self.thread = await self.get_thread(sender, receiver)
-            print("Here ii",)
-
-            # Join the user to the group
+        
             await self.channel_layer.group_add(self.chatroom, self.channel_name)
             await self.accept()
-
-            # Send chat history
+        
             chat_history = await self.fetch_chat_history(self.thread)
             await self.send_json({
                 "type": "chat_history",
@@ -118,103 +105,87 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             })
 
         except jwt.ExpiredSignatureError:
-            await self.close(code=4002)  # Token expired
+            await self.close(code=4002)
         except jwt.InvalidTokenError:
-            await self.close(code=4003)  # Invalid token
-        except ValueError:
-            await self.close(code=4004)  # User-related error
-        except Exception:
-            await self.close(code=4005)  # Unexpected error
+            await self.close(code=4003)
+        except Exception as e:
+            print("Connection error:", str(e))
+            await self.close(code=4005)
+
+
+    async def disconnect(self, close_code):
+        if hasattr(self, 'chatroom'):
+            await self.channel_layer.group_discard(self.chatroom, self.channel_name)
+    
 
     @database_sync_to_async
     def get_user_by_id(self, user_id):
-        """Fetch a user by ID, return None if not found."""
         try:
             return User.objects.get(id=user_id)
         except User.DoesNotExist:
             return None
 
     def generate_chatroom(self, user1, user2):
-        """
-        Generate a unique, deterministic chatroom name for a user pair.
-        Ensures both users always get the same room name.
-        """
         ids = sorted([str(user1.id), str(user2.id)])
         return f"chat_{ids[0]}_{ids[1]}"
 
     @database_sync_to_async
     def get_thread(self, user1, user2):
-        """
-        Fetch or create a chat thread between two users.
-        Implement your own model-based logic here.
-        """
-        from .models import ChatThread  # Replace with your model
-        thread, _ = ChatThread.objects.get_or_create(primary_user=user1, secondary_user=user2)
+        from .models import ChatThread
+        # Sort users by id to ensure consistency
+        primary_user, secondary_user = sorted([user1, user2], key=lambda u: u.id)
+        thread, _ = ChatThread.objects.get_or_create(
+            primary_user=primary_user,
+            secondary_user=secondary_user
+        )
         return thread
 
     @database_sync_to_async
     def fetch_chat_history(self, thread):
-        """
-        Retrieve previous messages in the thread.
-        Customize this method based on your model.
-        """
-        from .models import Chatmessage  # Replace with your model
+        from .models import Chatmessage
         messages = Chatmessage.objects.filter(thread=thread).order_by('message_time')
-
         return [
             {
-                "sender": msg.sender.username,
-                "content": msg.content,
-                "timestamp": msg.timestamp.isoformat()
-            }
-            for msg in messages
+                "sender": msg.user.username,
+                "content": msg.message,
+                "timestamp": msg.message_time.isoformat()
+            } for msg in messages
         ]
-    
+
     async def receive(self, text_data):
-        """
-        Handles incoming WebSocket messages. Supported types:
-        - chat_message: Sends chat text to recipient
-        - email: Sends an email with optional attachment
-        - file: Sends a file to recipient via WebSocket
-        """
-        # Ensure the incoming message is valid JSON
-        if not text_data.strip():
-            await self.send(text_data=json.dumps({
-                "error": "Empty message received"
-            }))
+        if not text_data:
+            await self.send_json({"error": "Empty message received"})
             return
-    
+
         try:
             data = json.loads(text_data)
-        except json.JSONDecodeError:
-            await self.send(text_data=json.dumps({
-                "error": "Invalid JSON data received"
-            }))
+        except json.JSONDecodeError as e:
+            await self.send_json({"error": f"Invalid JSON: {str(e)}"})
             return
-    
+
+        if not isinstance(data, dict):
+            await self.send_json({"error": "Expected a JSON object"})
+            return
+
         message_type = data.get("type")
-        to_user = data.get("to_user")
-    
-        # Route based on message type
+        to_user_id = data.get("to_user")
+
         if message_type == "chat_message":
-            await self.handle_chat_message(data, to_user)
-    
+            await self.handle_chat_message(data, to_user_id)
         elif message_type == "email":
             await self.send_email_with_attachments(
                 subject=data.get("subject", "No Subject"),
                 body=data.get("message", ""),
-                to_email=to_user,
+                to_email=to_user_id,
                 file_name=data.get("file_name"),
                 file_data=data.get("file_data")
             )
-    
         elif message_type == "file":
             saved_path = await self.handle_file_upload(
                 file_name=data.get("file_name"),
                 file_data=data.get("file_data"),
                 file_type=data.get("file_type")
             )
-    
             if saved_path:
                 await self.channel_layer.group_send(
                     self.chatroom,
@@ -222,89 +193,97 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                         "type": "file_message",
                         "file_url": saved_path,
                         "from_user": self.scope["user"].username,
-                        "to_user": to_user,
-                    },
+                        "to_user": to_user_id,
+                    }
                 )
             else:
-                await self.send(text_data=json.dumps({
-                    "error": "File upload failed"
-                }))
-    
+                await self.send_json({"error": "File upload failed"})
         else:
-            await self.send(text_data=json.dumps({
-                "error": "Unsupported message type"
-            }))
+            await self.send_json({"error": f"Unsupported message type: {message_type}"})
 
-    async def handle_chat_message(self, data, to_user):
-        """
-        Broadcasts a chat message to the group.
-        """
+    async def handle_chat_message(self, data, to_user_id):
+        message_text = data.get("message", "").strip()
+        if not message_text:
+            await self.send_json({"error": "Message cannot be empty."})
+            return
+
+        from_user = self.scope["user"]
+        thread = self.thread
+
+        # Save message to DB
+        await self.save_message(thread, from_user, message_text)
+        await self.update_last_message_time(thread, from_user)
+
+        # Send message to WebSocket group
         await self.channel_layer.group_send(
             self.chatroom,
             {
                 "type": "chat_message",
-                "message": data.get("message", ""),
-                "from_user": self.scope["user"].username,
-                "to_user": to_user,
-            },
+                "message": message_text,
+                "from_user": from_user.username,
+                "from_user_id": from_user.id,
+                "to_user": to_user_id,
+            }
         )
+
+
+    @database_sync_to_async
+    def save_message(self, thread, sender, message):
+        from .models import Chatmessage
+        msg = Chatmessage.objects.create(
+            thread=thread,
+            user=sender,
+            message=message,
+            message_id=str(uuid.uuid4())  # Add this field to model if not present
+        )
+        return msg
     
-    
-    
+    @database_sync_to_async
+    def update_last_message_time(self, thread, sender):
+        from django.utils import timezone
+        now = timezone.now()
+        if thread.primary_user == sender:
+            thread.primary_last_message_time = now
+        else:
+            thread.secondary_last_message_time = now
+        thread.save(update_fields=["primary_last_message_time", "secondary_last_message_time"])
+
     async def send_email_with_attachments(self, subject, body, to_email, file_name=None, file_data=None):
-        """
-        Sends an email with optional attachment.
-        """
-        email = EmailMessage(
-            subject=subject,
-            body=body,
-            from_email="no-reply@example.com",
-            to=[to_email],
-        )
-
+        email = EmailMessage(subject=subject, body=body, from_email="no-reply@example.com", to=[to_email])
         if file_name and file_data:
-            file_bytes = base64.b64decode(file_data)
-            email.attach(file_name, file_bytes)
-
+            try:
+                file_bytes = base64.b64decode(file_data)
+                email.attach(file_name, file_bytes)
+            except Exception as e:
+                await self.send_json({"error": f"Attachment error: {str(e)}"})
         email.send()
 
     async def handle_file_upload(self, file_name, file_data, file_type=None):
-        """
-        Decodes base64 file data and saves it to default storage.
-        Returns the saved file path (URL or path).
-        """
         if not file_name or not file_data:
             return None
-
-        # Decode the base64 string
-        file_bytes = base64.b64decode(file_data)
-        file_content = ContentFile(file_bytes, name=file_name)
-
-        # Save the file using Django's default storage
-        file_path = default_storage.save(f"uploads/{file_name}", file_content)
-
-        # If using a media server (e.g., Cloudinary or S3), return the URL here
-        return default_storage.url(file_path)
+        try:
+            file_bytes = base64.b64decode(file_data)
+            file_content = ContentFile(file_bytes, name=file_name)
+            file_path = default_storage.save(f"uploads/{file_name}", file_content)
+            return default_storage.url(file_path)
+        except Exception as e:
+            print("File upload error:", e)
+            return None
 
     async def chat_message(self, event):
-        """
-        Sends a chat message to WebSocket.
-        """
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             "type": "chat_message",
             "message": event["message"],
             "from_user": event["from_user"],
+            "from_user_id": event["from_user_id"],
             "to_user": event["to_user"],
-        }))
+        })
+    
 
     async def file_message(self, event):
-        """
-        Sends file message to WebSocket.
-        """
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             "type": "file",
             "file_url": event["file_url"],
             "from_user": event["from_user"],
             "to_user": event["to_user"],
-        }))
-    
+        })

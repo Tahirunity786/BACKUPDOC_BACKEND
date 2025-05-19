@@ -13,7 +13,8 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 from core__a.utiles import send_password_reset_email
-from core__a.models import ContactTicket
+from core__a.models import ContactTicket, Cities
+from core__p.serializer import DoctorTimeSlotsSerializer
 
 User = get_user_model()
 
@@ -50,12 +51,15 @@ class PatientModelUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("first_name", "last_name", "bio", "email")
+        fields = ("first_name", "last_name", "email", "city", "state", "street_address", "zip_code")
         extra_kwargs = {
             'first_name': {'required': False},
             'last_name': {'required': False},
             'email': {'required': False},
-            'bio': {'required': False},
+            'city': {'required': False},
+            'state': {'required': False},
+            'street_address': {'required': False},
+            'zip_code': {'required': False},
         }
 
     def update(self, instance, validated_data):
@@ -64,7 +68,10 @@ class PatientModelUpdateSerializer(serializers.ModelSerializer):
         instance.email = validated_data.get('email', instance.email)
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
-        instance.bio = validated_data.get('bio', instance.bio)
+        instance.city = validated_data.get('city', instance.city)
+        instance.state = validated_data.get('state', instance.state)
+        instance.street_address = validated_data.get('street_address', instance.street_address)
+        instance.zip_code = validated_data.get('zip_code', instance.zip_code)
         instance.save()
         return instance
     
@@ -203,3 +210,35 @@ class ContactTicketSerializer(serializers.ModelSerializer):
         ]
         # Read-only fields to protect from being updated by clients
         read_only_fields = ['contact_id', 'created_at', 'updated_at']
+
+class CitiesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Cities model.
+    Converts model instances to and from JSON format for API interactions.
+    """
+
+    class Meta:
+        model = Cities
+        # Fields to include in the serialized output
+        fields = [
+            'city_id',
+            'city_name',
+            'country',
+        ]
+        # Read-only fields to protect from being updated by clients
+        read_only_fields = ['city_id']
+    
+class DoctorUserSerializer(serializers.ModelSerializer):
+    profile_url = serializers.SerializerMethodField()
+    slotes = DoctorTimeSlotsSerializer(many=True)
+
+
+    class Meta:
+        model = User
+        fields = ('id', 'profile_url', 'first_name', 'last_name', 'specialization','slotes')
+        read_only_fields = ['id']
+
+    def get_profile_url(self, obj):
+        if obj.profile_url:
+            return obj.profile_url.url
+        return None

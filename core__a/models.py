@@ -33,11 +33,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False, db_index=True)
     is_active = models.BooleanField(default=True, db_index=True)
     user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES, default='patient', db_index=True)
-    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES, default='Free', null=True, db_index=True)
-    credits = models.IntegerField(null=True, db_index=True,default=3)
     password = models.CharField(max_length=200, db_index=True, default=None)
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
+
+    # For Doctor user
+    city = models.CharField(max_length=100, db_index=True, null=True, blank=True)
+    country = models.CharField(max_length=100,  db_index=True, null=True, blank=True)
+    state= models.CharField(max_length=100, db_index=True, null=True, blank=True)
+    street_address = models.CharField(max_length=100, db_index=True, null=True, blank=True)
+    zip_code = models.CharField(max_length=100, db_index=True, null=True, blank=True)
+    specialization = models.CharField(max_length=100, db_index=True, null=True, blank=True)
 
     users_messaging_container = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='messaging_container')
 
@@ -79,3 +85,35 @@ class ContactTicket(models.Model):
 
     def __str__(self):
         return f"{self.subject} - {self.user.email}"
+
+class Cities(models.Model):
+    city_id = models.CharField(max_length=100, db_index=True, null=True, unique=True, default="", blank=True)
+    city_name = models.CharField(max_length=100, db_index=True)
+    state = models.CharField(max_length=100, db_index=True)
+    country = models.CharField(max_length=100, db_index=True)
+
+    def save(self, *args, **kwargs):
+        if not self.city_id:
+            unique_str = ''.join(random.choices(string.ascii_letters + string.digits, k=15))
+            self.city_id = f'ct-{unique_str}'
+        
+        super(Cities, self).save(*args, **kwargs)
+
+class DoctorTimeSlots(models.Model):
+    doctor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='slotes',db_index=True)
+    date = models.DateField(db_index=True)
+    start_time = models.TimeField(db_index=True)
+    end_time = models.TimeField(db_index=True)
+    is_booked = models.BooleanField(default=False,db_index=True)
+
+    created_at = models.DateTimeField(auto_now_add=True,db_index=True)
+    updated_at = models.DateTimeField(auto_now=True,db_index=True)
+
+    class Meta:
+        verbose_name = "Doctor Time Slot"
+        verbose_name_plural = "Doctor Time Slots"
+        ordering = ['date', 'start_time']
+        unique_together = ('doctor', 'date', 'start_time')
+
+    def __str__(self):
+        return f"{self.doctor.first_name} | {self.date} | {self.start_time} - {self.end_time}"

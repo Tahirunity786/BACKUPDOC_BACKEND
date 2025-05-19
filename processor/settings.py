@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     'core__a.apps.CoreAConfig',
     'core__e.apps.CoreEConfig',
     'core__c.apps.CoreCConfig',
-    # 'core__p.apps.CorePConfig',
+    'core__p.apps.CorePConfig',
     "rest_framework",
     'rest_framework_simplejwt',
     "corsheaders",
@@ -192,24 +192,24 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 FRONTEND_URL='http://localhost:3000'
 
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],  # Use your Redis host and port
+            "hosts": [("127.0.0.1", 6379)],
         },
     },
 }
-
-
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
-    }
-}
-
 
 # CELERY SETTINGS
 CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Use Redis as the broker

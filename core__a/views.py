@@ -22,11 +22,12 @@ from google.oauth2 import id_token
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from rest_framework import generics
+from django.db.models import Q
 
 
-from core__a.serializers import ChangePasswordSerializer, ContactTicketSerializer, CreateUserSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer, PatientModelUpdateSerializer, UserInfoSerializer
+from core__a.serializers import ChangePasswordSerializer,CitiesSerializer, ContactTicketSerializer, CreateUserSerializer, DoctorUserSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer, PatientModelUpdateSerializer, UserInfoSerializer
 from core__a.token import get_tokens_for_user
-from core__a.models import ContactTicket
+from core__a.models import ContactTicket, Cities
 User = get_user_model()
 
 import logging
@@ -132,24 +133,11 @@ class UserLogin(APIView):
         return Response({"token":token['access'], "user":user, 'user_type':authenticated_user.user_type}, status=status.HTTP_202_ACCEPTED)
     
 
-class UpdateTuteeProfileView(APIView):
+class UpdateProfileView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
-    
-    def error_format(self, errors):
-        error_messages = []
 
-        for field, field_errors in errors.items():
-            if field == 'non_field_errors':
-                for error in field_errors:
-                    error_messages.append(str(error))  # Convert ErrorDetail to string
-            else:
-                for error in field_errors:
-                    error_messages.append(str(error))  # Convert ErrorDetail to string
-
-        return error_messages
-    
-    def put(self, request, user_type, *args, **kwargs):
+    def put(self, request, *args, **kwargs):
         user = request.user
 
         serializer = PatientModelUpdateSerializer(user, data=request.data, partial=True)
@@ -160,12 +148,13 @@ class UpdateTuteeProfileView(APIView):
             if file:
                 current_data.profile_url = file
                 current_data.save()
-            return Response({"Success": True, "Info": "Profile updated successfully.", 'user':UserInfoSerializer(current_data).data}, status=status.HTTP_200_OK)
+            
+            return Response({"Success": True, "Info": "Profile updated successfully.", 'user':UserInfoSerializer(current_data).data, 'user_type':current_data.user_type}, status=status.HTTP_200_OK)
         
         errors = serializer.errors
         
-        error_messages = self.error_format(errors)
-        return Response({"Success": False, "Error": error_messages}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({"Success": False, "Error": errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ChangePasswordView(APIView):
@@ -380,3 +369,72 @@ class ContactTicketListCreateView(generics.ListCreateAPIView):
             },
             status=status.HTTP_201_CREATED
         )
+    
+class SearchDoctorByCityView(generics.ListAPIView):
+    """
+    API view to search for doctors by city.
+    """
+    serializer_class = UserInfoSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        city = self.request.query_params.get('city', None)
+        if city:
+            return User.objects.filter(city__iexact=city, user_type='doctor')
+        return User.objects.none()  # Return an empty queryset if no city is provided
+
+class CitySearchAPIView(generics.ListAPIView):
+    """
+    API view to search cities based on partial name matches.
+    Accepts a query parameter ?search= to filter cities.
+    """
+    serializer_class = CitiesSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        query = self.request.query_params.get('search', '').strip()
+        if query:
+            return Cities.objects.filter(Q(city_name__icontains=query)).order_by('city_name')[:10]
+        return Cities.objects.none()
+
+    def list(self, request, *args, **kwargs):
+        """
+        Override to return a clean list of cities.
+        """
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+class DoctorListByCityAPIView(APIView):
+    """
+    API endpoint to retrieve all doctor users filtered by city name.
+    Accepts a 'city' query parameter (case-insensitive).
+    Returns a list of doctor users in the specified city.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        city = request.query_params.get('city', '').strip()
+        if not city:
+            return Response(
+                {"detail": "City query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Filter for active, verified doctors in the given city (case-insensitive)
+        doctors = User.objects.filter(
+            user_type='doctor',
+            city__iexact=city,
+            is_active=True,
+         
+        )
+
+        serializer = DoctorUserSerializer(doctors, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ALLDoctorListAPIView(generics.ListAPIView):
+    serializer_class = DoctorUserSerializer
+    queryset = User.objects.filter(user_type='doctor', is_active=True, is_verified=True)
+    permission_classes = [AllowAny]
+    pagination_class = None  

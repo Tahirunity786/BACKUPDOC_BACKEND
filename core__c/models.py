@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from django.utils.crypto import get_random_string
 from django.utils.timezone import now
@@ -26,6 +27,7 @@ class Chatmessage(models.Model):
     thread = models.ForeignKey(ChatThread, on_delete=models.CASCADE, related_name='chatmessage_thread')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     message = models.TextField()
+    message_id = models.CharField(max_length=100, default=str(uuid.uuid4()), unique=True, editable=False)
     message_time = models.DateTimeField(auto_now_add=True)
 
     class Meta:
