@@ -1,3 +1,4 @@
+import datetime
 import json
 import uuid
 import jwt
@@ -71,8 +72,8 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         query_params = parse_qs(query_string)
         token = query_params.get('token', [None])[0]
         target_user_id = query_params.get('roomName', [None])[0]
-        print("Connecting to chat consumer with token:", token)
-        print("Connecting to chat consumer with target_user_id:", target_user_id)
+        print("token: ", token)
+        print("target_user_id: ", target_user_id)
 
         if not token or not target_user_id:
             await self.close(code=4001)
@@ -92,8 +93,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         
             self.scope["user"] = sender
             self.chatroom = self.generate_chatroom(sender, receiver)
-            print("Chatroom name:", self.chatroom)
             self.thread = await self.get_thread(sender, receiver)
+
+            print(self.chatroom)
         
             await self.channel_layer.group_add(self.chatroom, self.channel_name)
             await self.accept()
@@ -145,12 +147,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         from .models import Chatmessage
         messages = Chatmessage.objects.filter(thread=thread).order_by('message_time')
         return [
-            {
-                "sender": msg.user.username,
-                "content": msg.message,
-                "timestamp": msg.message_time.isoformat()
-            } for msg in messages
-        ]
+                {
+                    "sender_id": msg.user.id,
+                    "sender": msg.user.username,
+                    "content": msg.message,
+                    "timestamp": msg.message_time.isoformat()
+                } for msg in messages
+            ]
+
 
     async def receive(self, text_data):
         if not text_data:
@@ -274,11 +278,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             "type": "chat_message",
             "message": event["message"],
-            "from_user": event["from_user"],
-            "from_user_id": event["from_user_id"],
-            "to_user": event["to_user"],
+            "sender_id": event["from_user_id"], 
+            "sender": event["from_user"],
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
         })
-    
 
     async def file_message(self, event):
         await self.send_json({

@@ -88,6 +88,7 @@ class AppointmentFeedback(models.Model):
         auto_now_add=True,
         db_index=True
     )
+    is_feedback = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Appointment Feedback"

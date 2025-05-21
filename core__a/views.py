@@ -25,9 +25,9 @@ from rest_framework import generics
 from django.db.models import Q
 
 
-from core__a.serializers import ChangePasswordSerializer,CitiesSerializer, ContactTicketSerializer, CreateUserSerializer, DoctorUserSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer, PatientModelUpdateSerializer, UserInfoSerializer
+from core__a.serializers import ChangePasswordSerializer,CitiesSerializer, ContactTicketSerializer, CreateUserSerializer, DoctorSlotsSerializer, DoctorUserSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer, PatientModelUpdateSerializer, UserInfoSerializer
 from core__a.token import get_tokens_for_user
-from core__a.models import ContactTicket, Cities
+from core__a.models import ContactTicket, Cities, DoctorTimeSlots
 User = get_user_model()
 
 import logging
@@ -71,7 +71,7 @@ class Register(APIView):
                 token = get_tokens_for_user(current_user)
                 user = UserInfoSerializer(current_user).data
 
-                return Response({"token":token['access'], "user":user, 'user_type':current_user.user_type}, status=status.HTTP_201_CREATED)
+                return Response({"token":token['access'], "user":user, 'user_type':current_user.user_type, "user_id":current_user.id}, status=status.HTTP_201_CREATED)
             except Exception as e:
                 return Response({"Error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
@@ -130,7 +130,7 @@ class UserLogin(APIView):
         user = UserInfoSerializer(authenticated_user).data
 
        
-        return Response({"token":token['access'], "user":user, 'user_type':authenticated_user.user_type}, status=status.HTTP_202_ACCEPTED)
+        return Response({"token":token['access'], "user":user, 'user_type':authenticated_user.user_type, "user_id":authenticated_user.id}, status=status.HTTP_202_ACCEPTED)
     
 
 class UpdateProfileView(APIView):
@@ -438,3 +438,18 @@ class ALLDoctorListAPIView(generics.ListAPIView):
     queryset = User.objects.filter(user_type='doctor', is_active=True, is_verified=True)
     permission_classes = [AllowAny]
     pagination_class = None  
+
+
+class DoctorTimeSlotsCreate(generics.ListCreateAPIView):
+    serializer_class = DoctorSlotsSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        # Return only slots created by the logged-in doctor
+        return DoctorTimeSlots.objects.filter(doctor=self.request.user)
+
+    def perform_create(self, serializer):
+        # Automatically assign the logged-in user as the doctor
+        serializer.save(doctor=self.request.user)
+    

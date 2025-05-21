@@ -21,7 +21,7 @@ class PatientXraySerializer(serializers.ModelSerializer):
 class DoctorUserInfo(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("first_name", "last_name")
+        fields = ('id',"first_name", "last_name")
 
 class PatientSerializer(serializers.ModelSerializer):
 
@@ -46,7 +46,7 @@ class PatientSerializer(serializers.ModelSerializer):
 class DoctorTimeSlotsSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoctorTimeSlots
-        fields = ['id', 'doctor', 'date', 'start_time', 'end_time', 'is_booked']
+        fields = ['id', 'days', 'start_time', 'end_time', 'is_booked']
 
         read_only_fields = ['id']
 
@@ -57,7 +57,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointments
         fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at', 'id', 'doctor', 'patient']
+        read_only_fields = ['created_at', 'updated_at', 'id', 'doctor', 'patient', 'is_feedback']
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)

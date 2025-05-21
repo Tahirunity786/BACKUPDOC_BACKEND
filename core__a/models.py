@@ -101,19 +101,27 @@ class Cities(models.Model):
 
 class DoctorTimeSlots(models.Model):
     doctor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='slotes',db_index=True)
-    date = models.DateField(db_index=True)
+    days = models.CharField(max_length=100, db_index=True, choices=[
+        ('monday', 'monday'),
+        ('tuesday', 'tuesday'),
+        ('wednesday', 'wednesday'),
+        ('thursday', 'thursday'),
+        ('friday', 'friday'),
+        ('saturday', 'saturday'),
+        ('sunday', 'sunday')
+    ], default='monday')
+
     start_time = models.TimeField(db_index=True)
     end_time = models.TimeField(db_index=True)
     is_booked = models.BooleanField(default=False,db_index=True)
-
     created_at = models.DateTimeField(auto_now_add=True,db_index=True)
     updated_at = models.DateTimeField(auto_now=True,db_index=True)
 
     class Meta:
         verbose_name = "Doctor Time Slot"
         verbose_name_plural = "Doctor Time Slots"
-        ordering = ['date', 'start_time']
-        unique_together = ('doctor', 'date', 'start_time')
+        ordering = [ 'start_time']
+
 
     def __str__(self):
-        return f"{self.doctor.first_name} | {self.date} | {self.start_time} - {self.end_time}"
+        return f"{self.doctor.first_name} | {self.start_time} - {self.end_time}"

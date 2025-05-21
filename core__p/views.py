@@ -164,25 +164,29 @@ class AppointmentCreateView(generics.CreateAPIView):
         slot_id = self.request.data.get('slot')
         appointment_date = self.request.data.get('date')
 
+        try:
+            user = User.objects.get(id=user.id)
+        except User.DoesNotExist:
+            raise ValidationError("User not found.")
+        # Ensure only patients can create appointments
+        if user.user_type != 'patient':
+            raise PermissionDenied("Only patients can create appointments.")
+
         if not slot_id or not appointment_date:
-            print("I'm here")
             raise ValidationError("Slot and date are required.")
 
         try:
             # Optimize DB query using select_related
             slot = DoctorTimeSlots.objects.select_related('doctor').get(id=slot_id)
         except DoctorTimeSlots.DoesNotExist:
-            print("I'm here 2")
             raise ValidationError("Selected slot does not exist.")
 
         # Check if slot is already booked
         if slot.is_booked:
-            print("I'm here 3")
             raise ValidationError("This time slot is already booked.")
 
         # Check daily appointment limit
         if Appointments.objects.filter(patient=user, date=appointment_date).count() >= 4:
-            print("I'm here 4")
             raise ValidationError("You can only book up to 4 appointments per day.")
 
         # Mark slot as booked

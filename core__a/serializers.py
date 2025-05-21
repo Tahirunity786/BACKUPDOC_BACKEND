@@ -13,7 +13,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 from core__a.utiles import send_password_reset_email
-from core__a.models import ContactTicket, Cities
+from core__a.models import ContactTicket, Cities, DoctorTimeSlots
 from core__p.serializer import DoctorTimeSlotsSerializer
 
 User = get_user_model()
@@ -242,3 +242,9 @@ class DoctorUserSerializer(serializers.ModelSerializer):
         if obj.profile_url:
             return obj.profile_url.url
         return None
+    
+class DoctorSlotsSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = DoctorTimeSlots
+        fields = ('days', 'start_time', 'end_time')

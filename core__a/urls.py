@@ -1,5 +1,5 @@
 from django.urls import path
-from core__a.views import ALLDoctorListAPIView, ChangePasswordView,CitySearchAPIView, ContactTicketListCreateView, DoctorListByCityAPIView, PasswordResetConfirmView, PasswordResetRequestView, Register, SearchDoctorByCityView, UserLogin, EmailChecker, UpdateProfileView
+from core__a.views import ALLDoctorListAPIView, ChangePasswordView,CitySearchAPIView, ContactTicketListCreateView, DoctorListByCityAPIView, DoctorTimeSlotsCreate, PasswordResetConfirmView, PasswordResetRequestView, Register, SearchDoctorByCityView, UserLogin, EmailChecker, UpdateProfileView
 urlpatterns = [
      path('register', Register.as_view(), name='register'),
      path('login', UserLogin.as_view(), name='login'),
@@ -13,7 +13,5 @@ urlpatterns = [
      path('cities', CitySearchAPIView.as_view(), name='search-cities'),
      path('by-city', DoctorListByCityAPIView.as_view(), name='doctor-list-by-city'),
      path('all-doctors', ALLDoctorListAPIView.as_view(), name='doctor-lis'),
-
-
-
+     path('add-time-slots', DoctorTimeSlotsCreate.as_view(), name='time-slots-create'),
 ]

@@ -23,5 +23,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/account/', include('core__a.urls')),
     path('api/xray/', include('core__p.urls')),
-    path('api/engine/', include('core__e.urls'))
+    path('api/engine/', include('core__e.urls')),
+    path('api/chat/', include('core__c.urls'))
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
