@@ -35,6 +35,7 @@ class Patients(models.Model):
     _id = models.CharField(max_length=50, db_index=True,default='')
     patient_xrays = models.ManyToManyField(PatientXray, default='', blank=True)
     doctor = models.ForeignKey(User, on_delete=models.CASCADE, default=None)
+    patient_email = models.EmailField(default=None, null=True, blank=True, db_index=True)
     first_name = models.CharField(max_length=100, db_index=True,default='')
     last_name = models.CharField(max_length=100, db_index=True,default='')
     age = models.PositiveIntegerField(default=0, db_index=True)

@@ -6,6 +6,7 @@ urlpatterns = [
     path('images/', PatientXrayListView.as_view(), name="uploaded-images"),
     path('patients/', PatientListCreateAPIView.as_view(), name='patient-list-create'),
     path('patients/<str:_id>/', PatientRetrieveUpdateDestroyAPIView.as_view(), name='patient-detail'),
+    path('patient-detail/<str:patient>/', PatientDataView.as_view(), name='patient-detail-view'),
     path('search', SearchPatientsView.as_view(), name='search-patients'),
     path('appointments/create/', AppointmentCreateView.as_view(), name='appointment-create'),
     path('appointments/list/', AppointmentListByPatientView.as_view(), name='appointment-list'),

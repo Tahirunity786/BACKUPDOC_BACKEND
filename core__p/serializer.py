@@ -31,6 +31,7 @@ class PatientSerializer(serializers.ModelSerializer):
             '_id',
             'first_name',
             'last_name',
+            'patient_email',
             'age',
             'gender',
             'doctor'

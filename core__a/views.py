@@ -380,7 +380,7 @@ class SearchDoctorByCityView(generics.ListAPIView):
     def get_queryset(self):
         city = self.request.query_params.get('city', None)
         if city:
-            return User.objects.filter(city__iexact=city, user_type='doctor')
+            return User.objects.filter(city__iexact=city, user_type='doctor', is_verified=True, is_active=True)
         return User.objects.none()  # Return an empty queryset if no city is provided
 
 class CitySearchAPIView(generics.ListAPIView):

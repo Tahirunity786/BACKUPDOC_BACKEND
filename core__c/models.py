@@ -29,6 +29,9 @@ class Chatmessage(models.Model):
     message = models.TextField()
     message_id = models.CharField(max_length=100, default=str(uuid.uuid4()), unique=True, editable=False)
     message_time = models.DateTimeField(auto_now_add=True)
+    file = models.FileField(upload_to='chat_files/', null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    
 
     class Meta:
         ordering = ['message_time']

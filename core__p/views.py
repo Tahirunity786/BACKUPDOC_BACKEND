@@ -360,3 +360,16 @@ class CreateAppointmentFeedbackView(generics.CreateAPIView):
                 [doctor.email],
                 fail_silently=False
             )
+
+class PatientDataView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, patient):
+
+        try:
+            patient = Patients.objects.get(_id=patient)
+        except Patients.DoesNotExist:
+            return Response({"error": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PatientSerializer(patient)
+        return Response(serializer.data, status=status.HTTP_200_OK)

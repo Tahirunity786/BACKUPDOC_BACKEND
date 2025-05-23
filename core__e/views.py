@@ -151,7 +151,6 @@ class FilteredAnalysisListView(generics.ListAPIView):
 
         return Analysis.objects.filter(user=user, date_time__gte=start_date).order_by('-date_time')
 
-
 class EmailAnalysisView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -159,35 +158,62 @@ class EmailAnalysisView(APIView):
         try:
             analysis = Analysis.objects.get(id=analysis_id, user=request.user)
 
-            subject = f"Your Analysis Report - ID #{analysis.id}"
-            body = f"""
-Hello {request.user.first_name} {request.user.last_name},
+            # Determine recipient
+            recipient_email = request.data.get("email", request.user.email)
+            print(recipient_email)
+            is_doctor = recipient_email == request.user.email
 
-Here is your analysis report:
+            subject = f"Your Analysis Report - ID #{analysis.id}" if is_doctor else "Your X-ray Analysis Report from Your Doctor"
 
-Date & Time: {analysis.date_time.strftime('%Y-%m-%d %H:%M')}
-Is Corrected: {analysis.is_corrected}
+            if is_doctor:
+                # Email body for doctor
+                body = f"""
+                Hello Dr. {request.user.first_name} {request.user.last_name},
+                
+                Here is your analysis report:
+                
+                Date & Time: {analysis.date_time.strftime('%Y-%m-%d %H:%M')}
+                Is Corrected: {'Yes' if analysis.is_corrected else 'No'}
+                
+                Predictions:
+                {', '.join(p.result_prediction for p in analysis.predictions.all())}
+                
+                Note:
+                {analysis.note or "No notes available."}
+                
+                Report Analysis:
+                {analysis.report_analysis or "No report provided."}
+                
+                Regards,  
+                Backupdoc Team
+                """
+            else:
+                # Email body for patient
+                body = f"""
+                Hello,
+                
+                Your doctor has shared your X-ray analysis report with you.
+                
+                Date & Time: {analysis.date_time.strftime('%Y-%m-%d %H:%M')}
+                
+                Findings:
+                {', '.join(p.result_prediction for p in analysis.predictions.all())}
+                
+                Doctor's Note:
+                {analysis.note or "No notes provided."}
+                
+                Summary:
+                {analysis.report_analysis or "No summary available."}
+                
+                Please consult your doctor for more information.
+                
+                Best regards,  
+                Backupdoc Team
+                """
 
-Predictions:
-{', '.join(p.result_prediction for p in analysis.predictions.all())}
+            email = EmailMessage(subject=subject, body=body, to=[recipient_email])
 
-Note:
-{analysis.note or "No notes available."}
-
-Report Analysis:
-{analysis.report_analysis or "No report provided."}
-
-Regards,
-Backupdoc Team
-"""
-
-            email = EmailMessage(
-                subject=subject,
-                body=body,
-                to=[request.user.email]
-            )
-
-            domain = getattr(settings, "DOMAIN", "http://192.168.100.5:8000")  # Your server domain
+            domain = getattr(settings, "DOMAIN", "http://127.0.0.1:8000")
 
             if analysis.raw_image:
                 raw_url = f"{domain}/media/{analysis.raw_image.lstrip('/')}"
@@ -202,7 +228,7 @@ Backupdoc Team
                     email.attach("analyzed_image.jpg", analyzed_response.content, 'image/jpeg')
 
             email.send()
-            return Response({'message': 'Analysis report emailed with images.'}, status=status.HTTP_200_OK)
+            return Response({'message': f'Analysis report emailed to {recipient_email}.'}, status=status.HTTP_200_OK)
 
         except Analysis.DoesNotExist:
             return Response({'error': 'Analysis not found or not owned by you.'}, status=status.HTTP_404_NOT_FOUND)
